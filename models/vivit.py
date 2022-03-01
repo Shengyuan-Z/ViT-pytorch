@@ -52,6 +52,28 @@ def np2th_vivit(weights, conv=False, times = 0, dim = 0):
         tmp = torch.stack([tmp for _ in range(times)], dim=dim)
     return tmp
 
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_out')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+    elif classname.find('Conv') != -1:
+        nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+    elif classname.find('BatchNorm') != -1:
+        if m.affine:
+            nn.init.normal_(m.weight, 1.0, 0.001)
+            nn.init.constant_(m.bias, 0.0)
+
+def weights_init_classifier(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.normal_(m.weight.data, std=0.001)
+        if m.bias is not None:
+            nn.init.constant_(m.bias.data, 0.0)
+
 def swish(x):
     return x * torch.sigmoid(x)
 
@@ -336,8 +358,6 @@ class VisionTransformer(nn.Module):
         self.bottleneck.bias.requires_grad_(False)
         self.head = Linear(config.hidden_size, num_classes,bias=False)
         self.t = config.t # t frames per tublet
-        # weights_init_kaiming(self.bottleneck)
-        # weights_init_classifier(self.head)
 
     def forward(self, x, labels=None): 
         #TODO: should return features
@@ -350,14 +370,14 @@ class VisionTransformer(nn.Module):
 
     def load_from(self, weights):
         with torch.no_grad():
-            # weights_init_classifier(self.head)
-            # weights_init_kaiming(self.bottleneck)
-            if self.zero_head: # needed
-                nn.init.zeros_(self.head.weight)
-                # nn.init.zeros_(self.head.bias)
-            else:
-                self.head.weight.copy_(np2th(weights["head/kernel"]).t())
-                # self.head.bias.copy_(np2th(weights["head/bias"]).t())
+            weights_init_classifier(self.head)
+            weights_init_kaiming(self.bottleneck)
+            # if self.zero_head: # needed
+            #     nn.init.zeros_(self.head.weight)
+            #     # nn.init.zeros_(self.head.bias)
+            # else:
+            #     self.head.weight.copy_(np2th(weights["head/kernel"]).t())
+            #     # self.head.bias.copy_(np2th(weights["head/bias"]).t())
 
             self.transformer.embeddings.patch_embeddings.weight.copy_\
                 (np2th_vivit(weights["embedding/kernel"], conv=True, times = self.t, dim = 2))
