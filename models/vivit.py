@@ -360,13 +360,12 @@ class VisionTransformer(nn.Module):
         self.t = config.t # t frames per tublet
 
     def forward(self, x, labels=None): 
-        #TODO: should return features
         x, attn_weights = self.transformer(x)
         # get the feature: [bs,feature_size]
         x = x.flatten(1, 2)
         features = self.bottleneck(x.mean(dim=1))
-        cls = self.head(features) 
         if self.training:
+            cls = self.head(features) 
             return cls, features
         else:
             return features
