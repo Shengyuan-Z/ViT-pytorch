@@ -44,6 +44,7 @@ def get_b16_config():
     config.transformer.dropout_rate = 0.1
     config.classifier = 'token'
     config.representation_size = None
+    config.t = 4
     return config
 
 

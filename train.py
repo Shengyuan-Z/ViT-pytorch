@@ -17,7 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 from apex import amp
 from apex.parallel import DistributedDataParallel as DDP
 
-from models.modeling import VisionTransformer, CONFIGS
+from models.vivit import VisionTransformer, CONFIGS
 from utils.scheduler import WarmupLinearSchedule, WarmupCosineSchedule
 from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
@@ -60,8 +60,8 @@ def setup(args):
     config = CONFIGS[args.model_type]
 
     num_classes = 10 if args.dataset == "cifar10" else 100
-
-    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes)
+    # args.img_size = [128,256]
+    model = VisionTransformer(config, args.img_size, seq_len=8, zero_head=True, num_classes=num_classes)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
@@ -192,8 +192,12 @@ def train(args, model):
                               disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
             batch = tuple(t.to(args.device) for t in batch)
-            x, y = batch
-            loss = model(x, y)
+            x, y = batch # x:[8, 3, 224, 224]
+
+            x = torch.stack([x,x],dim=0)
+
+            cls, ft = model(x)
+            # loss = model(x, y) 
 
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
@@ -239,6 +243,11 @@ def train(args, model):
     logger.info("End Training!")
 
 
+line = "--name cifar10-100_500 \
+        --dataset cifar10 \
+        --model_type ViT-B_16 \
+        --pretrained_dir checkpoint/ViT-B_16.npz"
+
 def main():
     parser = argparse.ArgumentParser()
     # Required parameters
@@ -257,11 +266,11 @@ def main():
 
     parser.add_argument("--img_size", default=224, type=int,
                         help="Resolution size")
-    parser.add_argument("--train_batch_size", default=512, type=int,
+    parser.add_argument("--train_batch_size", default=8, type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size", default=64, type=int,
                         help="Total batch size for eval.")
-    parser.add_argument("--eval_every", default=100, type=int,
+    parser.add_argument("--eval_every", default=1000, type=int,
                         help="Run prediction on validation set every so many steps."
                              "Will always run one evaluation at the end of training.")
 
@@ -293,7 +302,9 @@ def main():
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
-    args = parser.parse_args()
+
+    args = parser.parse_args(line.split())
+    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
     # Setup CUDA, GPU & distributed training
     if args.local_rank == -1:
