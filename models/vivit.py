@@ -366,7 +366,10 @@ class VisionTransformer(nn.Module):
         x = x.flatten(1, 2)
         features = self.bottleneck(x.mean(dim=1))
         cls = self.head(features) 
-        return cls, features
+        if self.training:
+            return cls, features
+        else:
+            return features
 
     def load_from(self, weights):
         with torch.no_grad():
